@@ -51,26 +51,19 @@ function resolveWorkDir(ctx: { workingDirectory: string }, repoPath?: string): s
 }
 
 /**
- * Verify we're operating on the expected repository
+ * Extract owner and repo name from a GitHub URL
+ * Returns "owner-repo" format for unique directory names
  */
-async function verifyRepo(cwd: string, expectedRepo?: string): Promise<{ valid: boolean; actual?: string; error?: string }> {
-  const result = await runCommand(["git", "remote", "get-url", "origin"], cwd);
+function extractOwnerRepo(url: string): string | null {
+  // Match GitHub URLs: https://github.com/owner/repo or git@github.com:owner/repo
+  const httpsMatch = url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/);
+  const sshMatch = url.match(/github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
 
-  if (!result.success) {
-    return { valid: false, error: "Not a git repository or no remote configured" };
+  const match = httpsMatch || sshMatch;
+  if (match) {
+    return `${match[1]}-${match[2]}`;
   }
-
-  const actualRemote = result.stdout.trim();
-
-  if (expectedRepo && !actualRemote.includes(expectedRepo)) {
-    return {
-      valid: false,
-      actual: actualRemote,
-      error: `Expected repo '${expectedRepo}' but found '${actualRemote}'`
-    };
-  }
-
-  return { valid: true, actual: actualRemote };
+  return null;
 }
 
 /**
@@ -81,19 +74,10 @@ export const gitStatusTool = createTool({
   description: "Get the current git status including branch name, staged/unstaged changes. IMPORTANT: Always specify repo_path when working on cloned repositories.",
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
-    repo_path: z.string().optional().describe("Repository path (e.g., 'my-repo' for issues_workspace/my-repo, or full path)"),
-    expected_repo: z.string().optional().describe("Expected repo name to verify (e.g., 'owner/repo') - prevents accidental operations on wrong repo"),
+    repo_path: z.string().optional().describe("Repository path (e.g., 'owner-repo' for issues_workspace/owner-repo)"),
   }),
-  execute: async ({ repo_path, expected_repo }, ctx) => {
+  execute: async ({ repo_path }, ctx) => {
     const cwd = resolveWorkDir(ctx, repo_path);
-
-    // Verify we're in the right repo if expected_repo is specified
-    if (expected_repo) {
-      const verification = await verifyRepo(cwd, expected_repo);
-      if (!verification.valid) {
-        return `Error: ${verification.error}`;
-      }
-    }
 
     const [statusResult, branchResult] = await Promise.all([
       runCommand(["git", "status", "--porcelain"], cwd),
@@ -126,18 +110,10 @@ export const gitCheckoutTool = createTool({
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
     branch_name: z.string().describe("Name of the branch to checkout"),
-    repo_path: z.string().optional().describe("Repository path (e.g., 'my-repo' for issues_workspace/my-repo)"),
-    expected_repo: z.string().optional().describe("Expected repo name to verify (e.g., 'owner/repo')"),
+    repo_path: z.string().optional().describe("Repository path (e.g., 'owner-repo' for issues_workspace/owner-repo)"),
   }),
-  execute: async ({ branch_name, repo_path, expected_repo }, ctx) => {
+  execute: async ({ branch_name, repo_path }, ctx) => {
     const cwd = resolveWorkDir(ctx, repo_path);
-
-    if (expected_repo) {
-      const verification = await verifyRepo(cwd, expected_repo);
-      if (!verification.valid) {
-        return `Error: ${verification.error}`;
-      }
-    }
 
     // First fetch to get latest branches
     await runCommand(["git", "fetch", "origin"], cwd);
@@ -167,18 +143,10 @@ export const gitCreateBranchTool = createTool({
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
     branch_name: z.string().describe("Name for the new branch (e.g., 'fix/issue-123-add-feature')"),
-    repo_path: z.string().optional().describe("Repository path (e.g., 'my-repo' for issues_workspace/my-repo)"),
-    expected_repo: z.string().optional().describe("Expected repo name to verify (e.g., 'owner/repo')"),
+    repo_path: z.string().optional().describe("Repository path (e.g., 'owner-repo' for issues_workspace/owner-repo)"),
   }),
-  execute: async ({ branch_name, repo_path, expected_repo }, ctx) => {
+  execute: async ({ branch_name, repo_path }, ctx) => {
     const cwd = resolveWorkDir(ctx, repo_path);
-
-    if (expected_repo) {
-      const verification = await verifyRepo(cwd, expected_repo);
-      if (!verification.valid) {
-        return `Error: ${verification.error}`;
-      }
-    }
 
     const result = await runCommand(["git", "checkout", "-b", branch_name], cwd);
 
@@ -199,18 +167,10 @@ export const gitAddTool = createTool({
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
     files: z.array(z.string()).describe("List of file paths to stage. Use ['.'] to stage all changes."),
-    repo_path: z.string().optional().describe("Repository path (e.g., 'my-repo' for issues_workspace/my-repo)"),
-    expected_repo: z.string().optional().describe("Expected repo name to verify (e.g., 'owner/repo')"),
+    repo_path: z.string().optional().describe("Repository path (e.g., 'owner-repo' for issues_workspace/owner-repo)"),
   }),
-  execute: async ({ files, repo_path, expected_repo }, ctx) => {
+  execute: async ({ files, repo_path }, ctx) => {
     const cwd = resolveWorkDir(ctx, repo_path);
-
-    if (expected_repo) {
-      const verification = await verifyRepo(cwd, expected_repo);
-      if (!verification.valid) {
-        return `Error: ${verification.error}`;
-      }
-    }
 
     const result = await runCommand(["git", "add", ...files], cwd);
 
@@ -231,18 +191,10 @@ export const gitCommitTool = createTool({
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
     message: z.string().describe("Commit message describing the changes"),
-    repo_path: z.string().optional().describe("Repository path (e.g., 'my-repo' for issues_workspace/my-repo)"),
-    expected_repo: z.string().optional().describe("Expected repo name to verify (e.g., 'owner/repo')"),
+    repo_path: z.string().optional().describe("Repository path (e.g., 'owner-repo' for issues_workspace/owner-repo)"),
   }),
-  execute: async ({ message, repo_path, expected_repo }, ctx) => {
+  execute: async ({ message, repo_path }, ctx) => {
     const cwd = resolveWorkDir(ctx, repo_path);
-
-    if (expected_repo) {
-      const verification = await verifyRepo(cwd, expected_repo);
-      if (!verification.valid) {
-        return `Error: ${verification.error}`;
-      }
-    }
 
     const result = await runCommand(["git", "commit", "-m", message], cwd);
 
@@ -264,18 +216,10 @@ export const gitPushTool = createTool({
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
     set_upstream: z.boolean().optional().describe("Whether to set upstream tracking (default: true for new branches)"),
-    repo_path: z.string().optional().describe("Repository path (e.g., 'my-repo' for issues_workspace/my-repo)"),
-    expected_repo: z.string().optional().describe("Expected repo name to verify (e.g., 'owner/repo')"),
+    repo_path: z.string().optional().describe("Repository path (e.g., 'owner-repo' for issues_workspace/owner-repo)"),
   }),
-  execute: async ({ set_upstream = true, repo_path, expected_repo }, ctx) => {
+  execute: async ({ set_upstream = true, repo_path }, ctx) => {
     const cwd = resolveWorkDir(ctx, repo_path);
-
-    if (expected_repo) {
-      const verification = await verifyRepo(cwd, expected_repo);
-      if (!verification.valid) {
-        return `Error: ${verification.error}`;
-      }
-    }
 
     const branchResult = await runCommand(["git", "branch", "--show-current"], cwd);
     const branch = branchResult.stdout.trim();
@@ -303,14 +247,15 @@ export const gitPushTool = createTool({
 
 /**
  * Tool to clone a repository into issues_workspace
+ * Uses owner-repo format for directory names to avoid collisions
  */
 export const gitCloneTool = createTool({
   name: "git_clone",
-  description: "Clone a GitHub repository to issues_workspace folder. Returns the repo_path to use with other git tools.",
+  description: "Clone a GitHub repository to issues_workspace folder. Returns the repo_path to use with other git tools. Uses 'owner-repo' format for directory names to avoid collisions.",
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
     repo_url: z.string().describe("Repository URL (HTTPS or SSH)"),
-    directory: z.string().optional().describe("Target directory name (optional, defaults to repo name)"),
+    directory: z.string().optional().describe("Custom directory name (optional, defaults to 'owner-repo' format)"),
   }),
   execute: async ({ repo_url, directory }, ctx) => {
     const baseDir = ctx.workingDirectory;
@@ -319,17 +264,45 @@ export const gitCloneTool = createTool({
     // Ensure issues_workspace directory exists
     await runCommand(["mkdir", "-p", workspaceDir], baseDir);
 
-    const repoName = directory || repo_url.split("/").pop()?.replace(".git", "") || "repo";
+    // Use owner-repo format by default to avoid collisions
+    const repoName = directory || extractOwnerRepo(repo_url) || repo_url.split("/").pop()?.replace(".git", "") || "repo";
     const targetPath = `${workspaceDir}/${repoName}`;
 
-    // Check if already cloned
+    // Check if directory already exists
     const exists = await runCommand(["test", "-d", targetPath], baseDir);
     if (exists.success) {
+      // Verify the existing directory is the correct repo
+      const remoteResult = await runCommand(["git", "remote", "get-url", "origin"], targetPath);
+
+      if (!remoteResult.success) {
+        return JSON.stringify({
+          error: true,
+          message: `Directory '${repoName}' exists but is not a git repository. Use 'directory' parameter to specify a different name.`,
+        }, null, 2);
+      }
+
+      const actualRemote = remoteResult.stdout.trim();
+
+      // Check if the remote matches (normalize URLs for comparison)
+      const normalizeUrl = (url: string) => url.replace(/\.git$/, "").replace(/^git@github\.com:/, "https://github.com/");
+      const requestedNormalized = normalizeUrl(repo_url);
+      const actualNormalized = normalizeUrl(actualRemote);
+
+      if (!actualNormalized.includes(requestedNormalized) && !requestedNormalized.includes(actualNormalized)) {
+        return JSON.stringify({
+          error: true,
+          message: `Directory '${repoName}' exists but contains a different repo (${actualRemote}). Use 'directory' parameter to specify a different name.`,
+          existing_remote: actualRemote,
+          requested_url: repo_url,
+        }, null, 2);
+      }
+
       return JSON.stringify({
         already_exists: true,
         repo_path: repoName,
         full_path: targetPath,
-        message: `Repository already exists. Use repo_path: "${repoName}" with other git tools.`,
+        remote: actualRemote,
+        message: `Repository already exists and verified. Use repo_path: "${repoName}" with other git tools.`,
       }, null, 2);
     }
 
@@ -357,7 +330,7 @@ export const runShellTool = createTool({
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
     command: z.string().describe("The shell command to run"),
-    repo_path: z.string().optional().describe("Repository path (e.g., 'my-repo' for issues_workspace/my-repo)"),
+    repo_path: z.string().optional().describe("Repository path (e.g., 'owner-repo' for issues_workspace/owner-repo)"),
   }),
   execute: async ({ command, repo_path }, ctx) => {
     const cwd = resolveWorkDir(ctx, repo_path);
@@ -387,7 +360,7 @@ export const runTestsTool = createTool({
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
     test_command: z.string().optional().describe("Custom test command (auto-detects if not provided)"),
-    repo_path: z.string().optional().describe("Repository path (e.g., 'my-repo' for issues_workspace/my-repo)"),
+    repo_path: z.string().optional().describe("Repository path (e.g., 'owner-repo' for issues_workspace/owner-repo)"),
   }),
   execute: async ({ test_command, repo_path }, ctx) => {
     const cwd = resolveWorkDir(ctx, repo_path);
