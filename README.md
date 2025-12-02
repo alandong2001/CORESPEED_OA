@@ -57,19 +57,29 @@ An autonomous AI agent built with [Zypher](https://zypher.corespeed.io) that tak
 
 ## Setup
 
-1. Clone this repository:
+1. Install [Deno](https://deno.land/) if not already installed:
+   ```bash
+   curl -fsSL https://deno.land/install.sh | sh
+   ```
+
+2. Add Deno to your PATH (add to `~/.zshrc` or `~/.bashrc` for permanence):
+   ```bash
+   export PATH="$HOME/.deno/bin:$PATH"
+   ```
+
+3. Clone this repository:
    ```bash
    git clone https://github.com/YOUR_USERNAME/issue-to-pr-agent.git
    cd issue-to-pr-agent
    ```
 
-2. Create a `.env` file with your API keys:
+4. Create a `.env` file with your API keys:
    ```bash
    cp .env.example .env
    # Edit .env and add your keys
    ```
 
-3. Install dependencies:
+5. Install dependencies:
    ```bash
    deno install
    ```
