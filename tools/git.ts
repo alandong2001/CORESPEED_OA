@@ -172,32 +172,40 @@ export const gitPushTool = createTool({
 });
 
 /**
- * Tool to clone a repository
+ * Tool to clone a repository into the workspace folder
  */
 export const gitCloneTool = createTool({
   name: "git_clone",
-  description: "Clone a GitHub repository to the workspace.",
+  description: "Clone a GitHub repository to the issues_workspace folder. The repo will be cloned into ./issues_workspace/<repo-name>/",
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
     repo_url: z.string().describe("Repository URL (HTTPS or SSH)"),
-    directory: z.string().optional().describe("Target directory name (optional)"),
+    directory: z.string().optional().describe("Target directory name (optional, defaults to repo name)"),
   }),
   execute: async ({ repo_url, directory }, ctx) => {
-    const cwd = ctx.workingDirectory;
+    const baseDir = ctx.workingDirectory;
+    const workspaceDir = `${baseDir}/issues_workspace`;
 
-    const args = ["git", "clone", repo_url];
-    if (directory) {
-      args.push(directory);
+    // Ensure workspace directory exists
+    await runCommand(["mkdir", "-p", workspaceDir], baseDir);
+
+    const repoName = directory || repo_url.split("/").pop()?.replace(".git", "") || "repo";
+    const targetPath = `${workspaceDir}/${repoName}`;
+
+    // Check if already cloned
+    const exists = await runCommand(["test", "-d", targetPath], baseDir);
+    if (exists.success) {
+      return `Repository already exists at: issues_workspace/${repoName}. Use the existing clone or delete it first.`;
     }
 
-    const result = await runCommand(args, cwd);
+    const args = ["git", "clone", repo_url, targetPath];
+    const result = await runCommand(args, baseDir);
 
     if (!result.success) {
       return `Error: ${result.stderr}`;
     }
 
-    const clonedDir = directory || repo_url.split("/").pop()?.replace(".git", "") || "repo";
-    return `Repository cloned to: ${clonedDir}`;
+    return `Repository cloned to: issues_workspace/${repoName}\nFull path: ${targetPath}`;
   },
 });
 

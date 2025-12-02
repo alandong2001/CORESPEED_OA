@@ -15,5 +15,5 @@ Thumbs.db
 # Logs
 *.log
 
-# Test repos (cloned during agent operation)
-test-repo/
+# Issues workspace - cloned repos during agent operation
+issues_workspace/
