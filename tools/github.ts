@@ -40,6 +40,20 @@ function parseIssueUrl(url: string): { owner: string; repo: string; issueNumber:
 }
 
 /**
+ * Parse a GitHub PR URL into owner, repo, and PR number
+ */
+function parsePrUrl(url: string): { owner: string; repo: string; prNumber: number } {
+  const urlPattern = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
+
+  const match = url.match(urlPattern);
+  if (match) {
+    return { owner: match[1], repo: match[2], prNumber: parseInt(match[3]) };
+  }
+
+  throw new Error(`Invalid PR URL format: ${url}. Expected format: https://github.com/owner/repo/pull/123`);
+}
+
+/**
  * Tool to fetch a GitHub issue's details
  */
 export const fetchIssueTool = createTool({
@@ -186,4 +200,204 @@ export const getRepoInfoTool = createTool({
   },
 });
 
-export const githubTools = [fetchIssueTool, createPullRequestTool, getRepoInfoTool];
+/**
+ * Tool to fetch PR details including branch info
+ */
+export const fetchPrDetailsTool = createTool({
+  name: "fetch_pr_details",
+  description: "Fetch details of a GitHub pull request including title, description, branch names, and status.",
+  schema: z.object({
+    explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
+    pr_url: z.string().describe("The GitHub PR URL (e.g., https://github.com/owner/repo/pull/123)"),
+  }),
+  execute: async ({ pr_url }) => {
+    try {
+      const { owner, repo, prNumber } = parsePrUrl(pr_url);
+
+      const response = await fetch(
+        `${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls/${prNumber}`,
+        { headers: getHeaders() }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        return `Error fetching PR: ${error}`;
+      }
+
+      const pr = await response.json();
+
+      return JSON.stringify({
+        number: pr.number,
+        title: pr.title,
+        body: pr.body || "(no description)",
+        state: pr.state,
+        merged: pr.merged,
+        head_branch: pr.head.ref,
+        base_branch: pr.base.ref,
+        author: pr.user.login,
+        html_url: pr.html_url,
+        repository: { owner, repo, full_name: `${owner}/${repo}` },
+        clone_url: pr.head.repo?.clone_url,
+        created_at: pr.created_at,
+        updated_at: pr.updated_at,
+      }, null, 2);
+    } catch (error) {
+      return `Error: ${String(error)}`;
+    }
+  },
+});
+
+/**
+ * Tool to fetch PR review comments (inline code comments)
+ */
+export const fetchPrReviewCommentsTool = createTool({
+  name: "fetch_pr_review_comments",
+  description: "Fetch review comments on a pull request. These are inline comments on specific lines of code.",
+  schema: z.object({
+    explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
+    pr_url: z.string().describe("The GitHub PR URL"),
+  }),
+  execute: async ({ pr_url }) => {
+    try {
+      const { owner, repo, prNumber } = parsePrUrl(pr_url);
+
+      const response = await fetch(
+        `${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls/${prNumber}/comments`,
+        { headers: getHeaders() }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        return `Error fetching PR comments: ${error}`;
+      }
+
+      const comments = await response.json();
+
+      const formattedComments = comments.map((c: {
+        user: { login: string };
+        body: string;
+        path: string;
+        line: number;
+        created_at: string;
+      }) => ({
+        author: c.user.login,
+        body: c.body,
+        file: c.path,
+        line: c.line,
+        created_at: c.created_at,
+      }));
+
+      return JSON.stringify({
+        total_comments: formattedComments.length,
+        comments: formattedComments,
+      }, null, 2);
+    } catch (error) {
+      return `Error: ${String(error)}`;
+    }
+  },
+});
+
+/**
+ * Tool to fetch PR reviews (approve/request changes/comment)
+ */
+export const fetchPrReviewsTool = createTool({
+  name: "fetch_pr_reviews",
+  description: "Fetch reviews on a pull request (approvals, change requests, and general review comments).",
+  schema: z.object({
+    explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
+    pr_url: z.string().describe("The GitHub PR URL"),
+  }),
+  execute: async ({ pr_url }) => {
+    try {
+      const { owner, repo, prNumber } = parsePrUrl(pr_url);
+
+      const response = await fetch(
+        `${GITHUB_API_BASE}/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
+        { headers: getHeaders() }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        return `Error fetching PR reviews: ${error}`;
+      }
+
+      const reviews = await response.json();
+
+      const formattedReviews = reviews.map((r: {
+        user: { login: string };
+        body: string;
+        state: string;
+        submitted_at: string;
+      }) => ({
+        author: r.user.login,
+        state: r.state, // APPROVED, CHANGES_REQUESTED, COMMENTED, PENDING
+        body: r.body || "(no comment)",
+        submitted_at: r.submitted_at,
+      }));
+
+      return JSON.stringify({
+        total_reviews: formattedReviews.length,
+        reviews: formattedReviews,
+      }, null, 2);
+    } catch (error) {
+      return `Error: ${String(error)}`;
+    }
+  },
+});
+
+/**
+ * Tool to fetch PR conversation comments (non-inline comments)
+ */
+export const fetchPrConversationTool = createTool({
+  name: "fetch_pr_conversation",
+  description: "Fetch general conversation comments on a pull request (not inline code comments).",
+  schema: z.object({
+    explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
+    pr_url: z.string().describe("The GitHub PR URL"),
+  }),
+  execute: async ({ pr_url }) => {
+    try {
+      const { owner, repo, prNumber } = parsePrUrl(pr_url);
+
+      // PR conversation uses the issues API
+      const response = await fetch(
+        `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${prNumber}/comments`,
+        { headers: getHeaders() }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        return `Error fetching PR conversation: ${error}`;
+      }
+
+      const comments = await response.json();
+
+      const formattedComments = comments.map((c: {
+        user: { login: string };
+        body: string;
+        created_at: string;
+      }) => ({
+        author: c.user.login,
+        body: c.body,
+        created_at: c.created_at,
+      }));
+
+      return JSON.stringify({
+        total_comments: formattedComments.length,
+        comments: formattedComments,
+      }, null, 2);
+    } catch (error) {
+      return `Error: ${String(error)}`;
+    }
+  },
+});
+
+export const githubTools = [
+  fetchIssueTool,
+  createPullRequestTool,
+  getRepoInfoTool,
+  fetchPrDetailsTool,
+  fetchPrReviewCommentsTool,
+  fetchPrReviewsTool,
+  fetchPrConversationTool,
+];

@@ -68,11 +68,43 @@ export const gitStatusTool = createTool({
 });
 
 /**
+ * Tool to checkout an existing branch
+ */
+export const gitCheckoutTool = createTool({
+  name: "git_checkout",
+  description: "Switch to an existing git branch. Use this to resume work on a PR branch.",
+  schema: z.object({
+    explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
+    branch_name: z.string().describe("Name of the branch to checkout"),
+  }),
+  execute: async ({ branch_name }, ctx) => {
+    const cwd = ctx.workingDirectory;
+
+    // First fetch to make sure we have the latest branches
+    await runCommand(["git", "fetch", "origin"], cwd);
+
+    // Try to checkout the branch
+    let result = await runCommand(["git", "checkout", branch_name], cwd);
+
+    // If local branch doesn't exist, try to checkout from remote
+    if (!result.success && result.stderr.includes("did not match any")) {
+      result = await runCommand(["git", "checkout", "-b", branch_name, `origin/${branch_name}`], cwd);
+    }
+
+    if (!result.success) {
+      return `Error: ${result.stderr}`;
+    }
+
+    return `Switched to branch: ${branch_name}`;
+  },
+});
+
+/**
  * Tool to create and checkout a new branch
  */
 export const gitCreateBranchTool = createTool({
   name: "git_create_branch",
-  description: "Create a new git branch and switch to it.",
+  description: "Create a NEW git branch and switch to it. Use git_checkout for existing branches.",
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
     branch_name: z.string().describe("Name for the new branch (e.g., 'fix/issue-123-add-feature')"),
@@ -291,6 +323,7 @@ export const runTestsTool = createTool({
 
 export const gitTools = [
   gitStatusTool,
+  gitCheckoutTool,
   gitCreateBranchTool,
   gitAddTool,
   gitCommitTool,
