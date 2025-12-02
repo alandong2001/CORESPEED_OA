@@ -17,3 +17,6 @@ Thumbs.db
 
 # Issues workspace - cloned repos during agent operation
 issues_workspace/
+
+# Backup files
+backup/
