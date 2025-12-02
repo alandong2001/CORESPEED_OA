@@ -6,15 +6,29 @@ An autonomous AI agent built with [Zypher](https://zypher.corespeed.io) that tak
 
 - **Autonomous Implementation**: Give it a GitHub issue URL, and it will:
   1. Fetch and analyze the issue
-  2. Clone the repository
-  3. Explore the codebase to understand context
-  4. Plan and implement the solution
-  5. Create a branch, commit changes, and open a PR
+  2. Check for existing PRs (prevents duplicates)
+  3. Clone the repository to isolated workspace
+  4. Explore the codebase to understand context
+  5. Plan and implement the solution
+  6. Run tests, commit changes, and open a PR
+
+- **PR Follow-up**: Address reviewer feedback on existing PRs:
+  1. Fetch PR details and review comments
+  2. Checkout the existing PR branch
+  3. Make requested changes
+  4. Push updates to the PR
+
+- **Repository Safety**:
+  - Clones repos to isolated `issues_workspace/` folder
+  - Verifies correct repo before git operations
+  - Prevents accidental pushes to main/master
+  - Detects existing PRs to avoid duplicates
 
 - **Built-in Tools**:
-  - File operations (read, edit, search)
-  - Git operations (branch, commit, push)
-  - GitHub API integration (fetch issues, create PRs)
+  - File operations (read, edit, search, list)
+  - Git operations (clone, branch, checkout, commit, push)
+  - GitHub API (issues, PRs, reviews, comments)
+  - Test runner with auto-detection
   - Shell command execution
 
 ## Prerequisites
@@ -50,36 +64,84 @@ Run the agent in interactive mode:
 deno task start
 ```
 
-Then enter a task like:
-- `Implement https://github.com/owner/repo/issues/123`
-- `Fix the bug described in owner/repo#45`
+Or specify a different model:
+
+```bash
+MODEL=claude-opus-4-20250514 deno task start
+```
+
+### Example Tasks
+
+**New Issue:**
+```
+Implement https://github.com/owner/repo/issues/123
+```
+
+**Existing PR Follow-up:**
+```
+Address the review comments on https://github.com/owner/repo/pull/456
+```
+
+**Short Format:**
+```
+Fix the bug in owner/repo#45
+```
 
 ## How It Works
+
+### New Issue Workflow
 
 ```
 ┌─────────────────┐
 │  GitHub Issue   │
-│  URL or #123    │
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│  Fetch Issue    │  ← GitHub API
+│ Check for PRs   │  ← Prevents duplicates
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ Explore Codebase│  ← File read, grep, list
+│  Clone Repo     │  → issues_workspace/
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│  Plan Solution  │  ← LLM reasoning
+│ Create Branch   │  ← fix/issue-123-desc
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│  Implement Fix  │  ← File edit/write
+│  Implement Fix  │  ← Edit files
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│  Create PR      │  ← Git + GitHub API
+│   Run Tests     │
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│  Create PR      │
+└─────────────────┘
+```
+
+### PR Follow-up Workflow
+
+```
+┌─────────────────┐
+│   PR URL        │
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ Fetch Reviews   │  ← Comments, approvals
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ Checkout Branch │  ← Existing PR branch
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ Address Changes │
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│  Push Updates   │  → Updates PR
 └─────────────────┘
 ```
 
@@ -89,13 +151,40 @@ Then enter a task like:
 issue-to-pr-agent/
 ├── main.ts           # Entry point
 ├── tools/
-│   ├── github.ts     # GitHub API tools
-│   └── git.ts        # Git command tools
+│   ├── github.ts     # GitHub API tools (8 tools)
+│   └── git.ts        # Git command tools (9 tools)
 ├── prompts/
 │   └── system.md     # Agent system prompt
 ├── deno.json         # Deno config
 └── .env.example      # Environment template
 ```
+
+## Tools Reference
+
+### GitHub Tools
+| Tool | Description |
+|------|-------------|
+| `fetch_github_issue` | Get issue details and comments |
+| `find_linked_prs` | Check for existing PRs (use before creating new PR) |
+| `fetch_pr_details` | Get PR info including branch name |
+| `fetch_pr_reviews` | Get review status (approve/changes requested) |
+| `fetch_pr_review_comments` | Get inline code comments |
+| `fetch_pr_conversation` | Get discussion comments |
+| `create_pull_request` | Create a new PR |
+| `get_repo_info` | Get repository metadata |
+
+### Git Tools
+| Tool | Description |
+|------|-------------|
+| `git_clone` | Clone repo to issues_workspace/ |
+| `git_status` | Check current state |
+| `git_checkout` | Switch to existing branch |
+| `git_create_branch` | Create new branch |
+| `git_add` | Stage files |
+| `git_commit` | Commit changes |
+| `git_push` | Push to remote (blocks main/master) |
+| `run_tests` | Run test suite (auto-detects) |
+| `run_shell` | Run shell commands |
 
 ## Built With
 
