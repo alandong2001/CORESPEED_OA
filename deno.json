@@ -1,6 +1,7 @@
 {
   "name": "issue-to-pr-agent",
   "version": "0.1.0",
+  "exports": "./main.ts",
   "tasks": {
     "start": "deno run -A main.ts",
     "dev": "deno run -A --watch main.ts"
