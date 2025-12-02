@@ -1,0 +1,19 @@
+# Environment
+.env
+
+# Deno
+deno.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Test repos (cloned during agent operation)
+test-repo/
