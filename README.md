@@ -37,6 +37,24 @@ An autonomous AI agent built with [Zypher](https://zypher.corespeed.io) that tak
 - [Anthropic API Key](https://console.anthropic.com/)
 - [GitHub Personal Access Token](https://github.com/settings/tokens) with `repo` scope
 
+## Configuration
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | Yes | Your Anthropic API key |
+| `GITHUB_TOKEN` | Yes | GitHub token with `repo` scope |
+| `MODEL` | No | Model to use (default: `claude-sonnet-4-20250514`) |
+
+### Available Models
+
+| Model | Description |
+|-------|-------------|
+| `claude-sonnet-4-5-20250929` | Latest, best for coding & agents |
+| `claude-opus-4-1-20250805` | Best for agentic tasks & reasoning |
+| `claude-haiku-4-5-20251015` | Fast, low cost |
+| `claude-sonnet-4-20250514` | Default, balanced |
+| `claude-opus-4-20250514` | Capable |
+
 ## Setup
 
 1. Clone this repository:
