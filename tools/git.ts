@@ -135,10 +135,11 @@ export const gitCommitTool = createTool({
 
 /**
  * Tool to push branch to remote
+ * SECURITY: Blocks pushing directly to main/master branches
  */
 export const gitPushTool = createTool({
   name: "git_push",
-  description: "Push the current branch to the remote repository.",
+  description: "Push the current branch to the remote repository. NOTE: Cannot push to main/master directly - must use a feature branch.",
   schema: z.object({
     explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
     set_upstream: z.boolean().optional().describe("Whether to set upstream tracking (default: true for new branches)"),
@@ -148,6 +149,12 @@ export const gitPushTool = createTool({
 
     const branchResult = await runCommand(["git", "branch", "--show-current"], cwd);
     const branch = branchResult.stdout.trim();
+
+    // SECURITY: Prevent pushing directly to main/master
+    const protectedBranches = ["main", "master", "develop", "production"];
+    if (protectedBranches.includes(branch.toLowerCase())) {
+      return `Error: Cannot push directly to '${branch}'. Create a feature branch first using git_create_branch, then push and create a pull request.`;
+    }
 
     const args = ["git", "push"];
     if (set_upstream) {
@@ -223,6 +230,57 @@ export const runShellTool = createTool({
   },
 });
 
+/**
+ * Tool to run tests - should be used before committing changes
+ */
+export const runTestsTool = createTool({
+  name: "run_tests",
+  description: "Run the project's test suite to verify changes work correctly. IMPORTANT: Always run tests before committing changes.",
+  schema: z.object({
+    explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
+    test_command: z.string().optional().describe("Custom test command (auto-detects if not provided)"),
+  }),
+  execute: async ({ test_command }, ctx) => {
+    const cwd = ctx.workingDirectory;
+
+    // Auto-detect test command based on project type
+    let command = test_command;
+    if (!command) {
+      // Check for common test configurations
+      const checks = [
+        { file: "package.json", cmd: "npm test" },
+        { file: "deno.json", cmd: "deno test" },
+        { file: "Cargo.toml", cmd: "cargo test" },
+        { file: "go.mod", cmd: "go test ./..." },
+        { file: "pytest.ini", cmd: "pytest" },
+        { file: "setup.py", cmd: "python -m pytest" },
+      ];
+
+      for (const check of checks) {
+        const exists = await runCommand(["test", "-f", check.file], cwd);
+        if (exists.success) {
+          command = check.cmd;
+          break;
+        }
+      }
+    }
+
+    if (!command) {
+      return "No test command found. Please specify a test_command or ensure the project has a standard test configuration.";
+    }
+
+    const result = await runCommand(["sh", "-c", command], cwd);
+
+    return JSON.stringify({
+      success: result.success,
+      test_command: command,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      summary: result.success ? "All tests passed!" : "Some tests failed. Please fix before committing.",
+    }, null, 2);
+  },
+});
+
 export const gitTools = [
   gitStatusTool,
   gitCreateBranchTool,
@@ -231,4 +289,5 @@ export const gitTools = [
   gitPushTool,
   gitCloneTool,
   runShellTool,
+  runTestsTool,
 ];
