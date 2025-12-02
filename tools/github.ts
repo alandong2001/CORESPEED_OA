@@ -392,6 +392,97 @@ export const fetchPrConversationTool = createTool({
   },
 });
 
+/**
+ * Tool to find PRs linked to an issue
+ */
+export const findLinkedPrsTool = createTool({
+  name: "find_linked_prs",
+  description: "Find pull requests that are linked to or mention a specific issue. Use this before creating a new PR to avoid duplicates.",
+  schema: z.object({
+    explanation: z.string().describe("One sentence explanation as to why this tool is being used"),
+    issue_url: z.string().describe("The GitHub issue URL or short reference (e.g., owner/repo#123)"),
+  }),
+  execute: async ({ issue_url }) => {
+    try {
+      const { owner, repo, issueNumber } = parseIssueUrl(issue_url);
+
+      // Search for PRs that mention this issue
+      const searchQuery = `repo:${owner}/${repo} is:pr ${issueNumber}`;
+      const response = await fetch(
+        `${GITHUB_API_BASE}/search/issues?q=${encodeURIComponent(searchQuery)}`,
+        { headers: getHeaders() }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        return `Error searching for linked PRs: ${error}`;
+      }
+
+      const searchResult = await response.json();
+
+      // Also check the issue timeline for linked PRs
+      const timelineResponse = await fetch(
+        `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues/${issueNumber}/timeline`,
+        {
+          headers: {
+            ...getHeaders(),
+            Accept: "application/vnd.github.mockingbird-preview+json",
+          }
+        }
+      );
+
+      let linkedFromTimeline: Array<{ number: number; title: string; state: string; html_url: string }> = [];
+      if (timelineResponse.ok) {
+        const timeline = await timelineResponse.json();
+        linkedFromTimeline = timeline
+          .filter((event: { event: string; source?: { issue?: { pull_request?: unknown } } }) =>
+            event.event === "cross-referenced" && event.source?.issue?.pull_request
+          )
+          .map((event: { source: { issue: { number: number; title: string; state: string; html_url: string } } }) => ({
+            number: event.source.issue.number,
+            title: event.source.issue.title,
+            state: event.source.issue.state,
+            html_url: event.source.issue.html_url,
+          }));
+      }
+
+      // Combine and deduplicate results
+      const allPrs = new Map<number, { number: number; title: string; state: string; html_url: string }>();
+
+      for (const item of searchResult.items || []) {
+        if (item.pull_request) {
+          allPrs.set(item.number, {
+            number: item.number,
+            title: item.title,
+            state: item.state,
+            html_url: item.html_url,
+          });
+        }
+      }
+
+      for (const pr of linkedFromTimeline) {
+        allPrs.set(pr.number, pr);
+      }
+
+      const prs = Array.from(allPrs.values());
+      const openPrs = prs.filter(pr => pr.state === "open");
+      const closedPrs = prs.filter(pr => pr.state === "closed");
+
+      return JSON.stringify({
+        issue_number: issueNumber,
+        total_linked_prs: prs.length,
+        open_prs: openPrs,
+        closed_prs: closedPrs,
+        warning: openPrs.length > 0
+          ? `There are ${openPrs.length} open PR(s) already linked to this issue. Consider working on the existing PR instead of creating a new one.`
+          : null,
+      }, null, 2);
+    } catch (error) {
+      return `Error: ${String(error)}`;
+    }
+  },
+});
+
 export const githubTools = [
   fetchIssueTool,
   createPullRequestTool,
@@ -400,4 +491,5 @@ export const githubTools = [
   fetchPrReviewCommentsTool,
   fetchPrReviewsTool,
   fetchPrConversationTool,
+  findLinkedPrsTool,
 ];
