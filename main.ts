@@ -6,12 +6,20 @@
  *
  * Usage:
  *   deno run -A main.ts
+ *
+ * Environment Variables:
+ *   ANTHROPIC_API_KEY - Required for Anthropic models
+ *   OPENAI_API_KEY    - Required for OpenAI models
+ *   GITHUB_TOKEN      - Required for GitHub API
+ *   MODEL             - Model to use (default: claude-sonnet-4-20250514)
+ *   PROVIDER          - Provider: "anthropic" or "openai" (default: anthropic)
  */
 
 import "@std/dotenv/load";
 import {
   ZypherAgent,
   AnthropicModelProvider,
+  OpenAIModelProvider,
   runAgentInTerminal,
   createZypherContext,
 } from "@corespeed/zypher";
@@ -32,12 +40,22 @@ const systemPrompt = await Deno.readTextFile(
   new URL("./prompts/system.md", import.meta.url)
 );
 
-// Validate environment
+// Configuration
+const provider = Deno.env.get("PROVIDER") || "anthropic";
+const model = Deno.env.get("MODEL") || (provider === "openai" ? "gpt-4o" : "claude-sonnet-4-20250514");
 const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+const openaiKey = Deno.env.get("OPENAI_API_KEY");
 const githubToken = Deno.env.get("GITHUB_TOKEN");
 
-if (!anthropicKey) {
-  console.error("❌ Error: ANTHROPIC_API_KEY environment variable is required");
+// Validate environment
+if (provider === "anthropic" && !anthropicKey) {
+  console.error("❌ Error: ANTHROPIC_API_KEY is required for Anthropic provider");
+  console.error("   Create a .env file with your API key (see .env.example)");
+  Deno.exit(1);
+}
+
+if (provider === "openai" && !openaiKey) {
+  console.error("❌ Error: OPENAI_API_KEY is required for OpenAI provider");
   console.error("   Create a .env file with your API key (see .env.example)");
   Deno.exit(1);
 }
@@ -48,15 +66,18 @@ if (!githubToken) {
   Deno.exit(1);
 }
 
+// Create model provider based on configuration
+const modelProvider = provider === "openai"
+  ? new OpenAIModelProvider({ apiKey: openaiKey! })
+  : new AnthropicModelProvider({ apiKey: anthropicKey! });
+
 // Create Zypher context
 const context = await createZypherContext(Deno.cwd());
 
 // Initialize the agent
 const agent = new ZypherAgent(
   context,
-  new AnthropicModelProvider({
-    apiKey: anthropicKey,
-  }),
+  modelProvider,
   {
     overrides: {
       systemPromptLoader: async () => systemPrompt,
@@ -92,8 +113,9 @@ console.log(`
 ╚═══════════════════════════════════════════════════════════╝
 `);
 
+console.log(`🤖 Provider: ${provider} | Model: ${model}`);
 const allToolNames = [...builtInTools, ...customTools].map((t) => t.name);
-console.log("🔧 Registered tools:", allToolNames.join(", "));
+console.log("🔧 Tools:", allToolNames.join(", "));
 console.log("");
 console.log("💡 Example tasks:");
 console.log("   - Implement https://github.com/owner/repo/issues/123");
@@ -103,4 +125,4 @@ console.log("🚀 Starting interactive mode...");
 console.log("");
 
 // Run the agent in interactive mode
-await runAgentInTerminal(agent, "claude-sonnet-4-20250514");
+await runAgentInTerminal(agent, model);
